@@ -5,8 +5,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 import it.polito.tdp.PremierLeague.model.Action;
+import it.polito.tdp.PremierLeague.model.Adiacenza;
 import it.polito.tdp.PremierLeague.model.Match;
 import it.polito.tdp.PremierLeague.model.Player;
 import it.polito.tdp.PremierLeague.model.Team;
@@ -36,7 +41,7 @@ public class PremierLeagueDAO {
 		}
 	}
 	
-	public List<Team> listAllTeams(){
+	public void listAllTeams(Map <Integer, Team> idMap){
 		String sql = "SELECT * FROM Teams";
 		List<Team> result = new ArrayList<Team>();
 		Connection conn = DBConnect.getConnection();
@@ -47,14 +52,14 @@ public class PremierLeagueDAO {
 			while (res.next()) {
 
 				Team team = new Team(res.getInt("TeamID"), res.getString("Name"));
-				result.add(team);
+				idMap.put(team.getTeamID(), team);
 			}
 			conn.close();
-			return result;
+			
 			
 		} catch (SQLException e) {
 			e.printStackTrace();
-			return null;
+			
 		}
 	}
 	
@@ -83,11 +88,11 @@ public class PremierLeagueDAO {
 		}
 	}
 	
-	public List<Match> listAllMatches(){
+	public Map<Integer, Match> listAllMatches(){
 		String sql = "SELECT m.MatchID, m.TeamHomeID, m.TeamAwayID, m.teamHomeFormation, m.teamAwayFormation, m.resultOfTeamHome, m.date, t1.Name, t2.Name   "
 				+ "FROM Matches m, Teams t1, Teams t2 "
 				+ "WHERE m.TeamHomeID = t1.TeamID AND m.TeamAwayID = t2.TeamID";
-		List<Match> result = new ArrayList<Match>();
+		Map <Integer, Match> mappa= new HashMap <Integer, Match>();
 		Connection conn = DBConnect.getConnection();
 
 		try {
@@ -100,9 +105,102 @@ public class PremierLeagueDAO {
 							res.getInt("m.teamAwayFormation"),res.getInt("m.resultOfTeamHome"), res.getTimestamp("m.date").toLocalDateTime(), res.getString("t1.Name"),res.getString("t2.Name"));
 				
 				
-				result.add(match);
-
+				mappa.put(match.getMatchID(), match);
 			}
+			conn.close();
+			return mappa;
+			
+		} catch (SQLException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	public List <Adiacenza> getAdiacenze(Map<Integer, Team> idMap){
+		String sql="SELECT m1.TeamHomeID as t1, m2.TeamHomeID as t2, m1.ResultOfTeamHome AS ris1, m2.ResultOfTeamHome AS ris2 "
+				+ "FROM matches m1, matches m2 "
+				+ "WHERE m1.TeamHomeID> m2.TeamHomeID "
+				+ "GROUP BY m1.TeamHomeID, m2.TeamHomeID";
+		List<Adiacenza> result = new ArrayList<Adiacenza>();
+		Connection conn = DBConnect.getConnection();
+
+		try {
+			PreparedStatement st = conn.prepareStatement(sql);
+			ResultSet res = st.executeQuery();
+			double punteggio1=0;
+			double punteggio2=0;
+			double punteggio=0;
+			while (res.next()) {
+				Team t1= idMap.get(res.getInt("t1"));
+				Team t2= idMap.get(res.getInt("t2"));
+				double res1=res.getDouble("ris1");
+				double res2= res.getDouble("ris2");
+				if(res1==1 && res2!=1) {
+					punteggio1=punteggio1+3;
+					
+				}
+				if(res2==1 && res1!=1) {
+					punteggio2=punteggio2+3;
+				}
+				if(res2==0 && res1==0) {
+					punteggio1=punteggio1+1;
+					punteggio2=punteggio2+1;
+				}
+				
+				punteggio=punteggio1-punteggio2;
+				if(punteggio>0) {
+					Adiacenza a= new Adiacenza(t1,t2,punteggio);
+					result.add(a);
+				}
+				else if(punteggio <0) {
+					Adiacenza a = new Adiacenza (t2,t1, (punteggio2-punteggio1));
+					result.add(a);
+				}
+				
+				
+			}
+			conn.close();
+			return result;
+			
+		} catch (SQLException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	public List <Team> calcolaPunteggio (Map <Integer, Team> idMap) {
+		String sql="SELECT t1.TeamID as t1, t2.TeamID as t2, m.ResultOfTeamHome as r "
+				+ "FROM matches m, teams t1, teams t2 "
+				+ "WHERE t1.TeamID=m.TeamHomeID AND t2.TeamID= m.TeamAwayID "
+				+ "";
+		
+		
+		List<Team> result = new ArrayList<Team>(idMap.values());
+		Connection conn = DBConnect.getConnection();
+
+		try {
+			PreparedStatement st = conn.prepareStatement(sql);
+
+			ResultSet res = st.executeQuery();
+			while (res.next()) {
+				
+				Team t1= idMap.get(res.getInt("t1"));
+				Team t2= idMap.get(res.getInt("t2"));
+				
+				if(res.getInt("r")==1 ) {
+					t1.setPunteggio(t1.getPunteggio()+3);
+					
+				}
+				
+				else if(res.getInt("r")==0 ) {
+					t1.setPunteggio(t1.getPunteggio()+1);
+					t2.setPunteggio(t2.getPunteggio()+1);
+				}
+				else if(res.getInt("r")==-1) {
+					t2.setPunteggio(t2.getPunteggio()+3);
+				}
+			}
+			Collections.sort(result);
 			conn.close();
 			return result;
 			
